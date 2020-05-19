@@ -5,10 +5,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <math_constants.h>
 
-#define FREQUENCY 1000 // Frequency in Hz
-#define SAMPLE_RATE (8 * FREQUENCY)
-#define N_SECONDS 4
+#define FREQUENCY 1000.0 // Frequency in Hz
+#define SAMPLE_RATE 44100.0
+#define N_SECONDS 4.0
 #define N_SAMPLES (N_SECONDS * SAMPLE_RATE)
 
 #define BLOCK_SIZE 1024
@@ -18,7 +19,7 @@ cudaError_t cudaSinusoidGenerator(double *signal, unsigned int size);
 __global__ void sinusoidGeneratorKernel(double *signal)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    signal[i] = sin(2*3.14159*FREQUENCY*((double)i/SAMPLE_RATE)); 
+    signal[i] = sin(2*CUDART_PI*FREQUENCY*((double)i/SAMPLE_RATE)); 
     //signal[i] = (double)i;
 }
 
@@ -40,6 +41,7 @@ int main()
     }
 
     FILE* outFile;
+
 
     outFile = fopen("signal_out.txt", "w+");
     for (int i = 0; i < N_SAMPLES; i++)
