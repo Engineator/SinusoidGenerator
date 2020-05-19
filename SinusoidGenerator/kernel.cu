@@ -3,28 +3,53 @@
 #include "device_launch_parameters.h"
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
 
-cudaError_t cudaSinusoidGenerator(int *c, const int *a, const int *b, unsigned int size);
+#define FREQUENCY 1000 // Frequency in Hz
+#define SAMPLE_RATE (8 * FREQUENCY)
+#define N_SECONDS 4
+#define N_SAMPLES (N_SECONDS * SAMPLE_RATE)
 
-__global__ void sinusoidGeneratorKernel(int *c, const int *a, const int *b)
+#define BLOCK_SIZE 1024
+
+cudaError_t cudaSinusoidGenerator(double *signal, unsigned int size);
+
+__global__ void sinusoidGeneratorKernel(double *signal)
 {
-    int i = threadIdx.x;
-    c[i] = a[i] + b[i];
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    signal[i] = sin(2*3.14159*FREQUENCY*((double)i/SAMPLE_RATE)); 
+    //signal[i] = (double)i;
 }
 
 int main()
 {
-    double* signal;
 
-    // Add vectors in parallel.
-    cudaError_t cudaStatus = addWithCuda(c, a, b, arraySize);
+    double * signal = (double *)malloc(N_SAMPLES * sizeof(double));
+
+    for (int i = 0; i < N_SAMPLES; i++)
+    {
+        signal[i] = (double)i;
+    }
+
+    //// Generate Sinusoid
+    cudaError_t cudaStatus = cudaSinusoidGenerator(signal,N_SAMPLES);
     if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "addWithCuda failed!");
+        fprintf(stderr, "cudaSinusoidGenerator failed!");
         return 1;
     }
 
-    printf("{1,2,3,4,5} + {10,20,30,40,50} = {%d,%d,%d,%d,%d}\n",
-        c[0], c[1], c[2], c[3], c[4]);
+    FILE* outFile;
+
+    outFile = fopen("signal_out.txt", "w+");
+    for (int i = 0; i < N_SAMPLES; i++)
+    {
+        fprintf(outFile, "%f\n", signal[i]);
+    }
+    fclose(outFile);
+
+    free(signal);
+    
 
     // cudaDeviceReset must be called before exiting in order for profiling and
     // tracing tools such as Nsight and Visual Profiler to show complete traces.
@@ -37,12 +62,10 @@ int main()
     return 0;
 }
 
-// Helper function for using CUDA to add vectors in parallel.
-cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size)
+ // Helper function for using CUDA to generate a sinusoid
+cudaError_t cudaSinusoidGenerator(double *signal, unsigned int size)
 {
-    int *dev_a = 0;
-    int *dev_b = 0;
-    int *dev_c = 0;
+    double *dev_signal = 0;
     cudaError_t cudaStatus;
 
     // Choose which GPU to run on, change this on a multi-GPU system.
@@ -53,39 +76,16 @@ cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size)
     }
 
     // Allocate GPU buffers for three vectors (two input, one output)    .
-    cudaStatus = cudaMalloc((void**)&dev_c, size * sizeof(int));
+    cudaStatus = cudaMalloc((void**)&dev_signal, size * sizeof(double));
     if (cudaStatus != cudaSuccess) {
         fprintf(stderr, "cudaMalloc failed!");
         goto Error;
     }
 
-    cudaStatus = cudaMalloc((void**)&dev_a, size * sizeof(int));
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "cudaMalloc failed!");
-        goto Error;
-    }
-
-    cudaStatus = cudaMalloc((void**)&dev_b, size * sizeof(int));
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "cudaMalloc failed!");
-        goto Error;
-    }
-
-    // Copy input vectors from host memory to GPU buffers.
-    cudaStatus = cudaMemcpy(dev_a, a, size * sizeof(int), cudaMemcpyHostToDevice);
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "cudaMemcpy failed!");
-        goto Error;
-    }
-
-    cudaStatus = cudaMemcpy(dev_b, b, size * sizeof(int), cudaMemcpyHostToDevice);
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "cudaMemcpy failed!");
-        goto Error;
-    }
-
-    // Launch a kernel on the GPU with one thread for each element.
-    addKernel<<<1, size>>>(dev_c, dev_a, dev_b);
+    // Launch a kernel on the GPU blocking out signal in grid
+    dim3 dimBlock(BLOCK_SIZE, 1);
+    dim3 dimGrid(N_SAMPLES/dimBlock.x, 1);
+    sinusoidGeneratorKernel<<<dimGrid, dimBlock>>>(dev_signal);
 
     // Check for any errors launching the kernel
     cudaStatus = cudaGetLastError();
@@ -103,16 +103,15 @@ cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size)
     }
 
     // Copy output vector from GPU buffer to host memory.
-    cudaStatus = cudaMemcpy(c, dev_c, size * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaStatus = cudaMemcpy(signal, dev_signal, size * sizeof(double), cudaMemcpyDeviceToHost);
     if (cudaStatus != cudaSuccess) {
         fprintf(stderr, "cudaMemcpy failed!");
         goto Error;
     }
 
 Error:
-    cudaFree(dev_c);
-    cudaFree(dev_a);
-    cudaFree(dev_b);
+    cudaFree(dev_signal);
     
     return cudaStatus;
+
 }
