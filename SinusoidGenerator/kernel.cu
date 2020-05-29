@@ -48,19 +48,19 @@ int main()
     FILE* outFile;
 
 
-    //outFile = fopen("signal_out.txt", "w+");
-    /*for (int i = 0; i < N_SAMPLES; i++)
+    outFile = fopen("signal_out.txt", "w+");
+    for (int i = 0; i < N_SAMPLES; i++)
     {
         fprintf(outFile, "%f\n", signal[i]);
     }
     fclose(outFile);
 
-    free(signal);*/
+    free(signal);
 
-    int length = N_SAMPLES;
+    //int length = N_SAMPLES;
 
-    outFile = wavfile_open("signal_sound.wav");
-    wavfile_write(outFile, signal, length);
+    //outFile = wavfile_open("signal_sound.wav");
+    //wavfile_write(outFile, signal, length);
 
     // cudaDeviceReset must be called before exiting in order for profiling and
     // tracing tools such as Nsight and Visual Profiler to show complete traces.
